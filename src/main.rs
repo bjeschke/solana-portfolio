@@ -1,11 +1,32 @@
+use std::collections::HashMap;
 use anyhow::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::env;
 use serde_json::Value;
 use solana_client::rpc_request::{RpcRequest, TokenAccountsFilter};
+use reqwest::blocking::get;
 use spl_token::ID as TOKEN_PROGRAM_ID;
 use solana_account_decoder::UiAccountData;
+
+
+fn load_token_map() -> Result<HashMap<String, (String, String)>> {
+    let url = "https://raw.githubusercontent.com/solana-labs/token-list/main/src/tokens/solana.tokenlist.json";
+    let response: Value = get(url)?.json()?;
+
+    let mut map = HashMap::new();
+
+    if let Some(tokens) = response["tokens"].as_array() {
+        for token in tokens {
+            let mint = token["address"].as_str().unwrap_or("").to_string();
+            let name = token["name"].as_str().unwrap_or("Unknown").to_string();
+            let symbol = token["symbol"].as_str().unwrap_or("").to_string();
+            map.insert(mint, (name, symbol));
+        }
+    }
+
+    Ok(map)
+}
 
 
 fn main() -> Result<()> {
@@ -43,6 +64,7 @@ fn main() -> Result<()> {
 
     // RPC-Call: getTokenAccountsByOwner mit JSON-Ausgabe
     let response = client.send::<Value>(RpcRequest::GetTokenAccountsByOwner, params)?;
+    let token_map = load_token_map()?;
 
     // Parsen und Anzeigen der Token
     let empty_vec = Vec::new(); // Sicherer Fallback
@@ -63,6 +85,12 @@ fn main() -> Result<()> {
 
             // Nur anzeigen, wenn > 0
             if ui_amount > 0.0 {
+                let (name, symbol) = token_map
+                    .get(mint)
+                    .cloned()
+                    .unwrap_or(("Unknown".to_string(), "".to_string()));
+
+                println!("• Token: {} ({})", name, mint);
                 println!("• Mint: {}\n  Amount: {}", mint, amount_str);
             }
         }
